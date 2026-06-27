@@ -440,13 +440,15 @@ function M.add_signs(bufnr, hunks)
       sign_hl_group = sign.hl,
       priority = M.signs.priority,
     }
-    if count > 1 then
-      config.end_row = line + count - 1
-    end
     if vim.g.vcsigns_highlight_number then
       config.number_hl_group = sign.hl
     end
-    vim.api.nvim_buf_set_extmark(bufnr, ns, line, 0, config)
+    -- Place one extmark per line; end_row does not replicate signs.
+    for i = 0, count - 1 do
+      if line + i < line_count then
+        vim.api.nvim_buf_set_extmark(bufnr, ns, line + i, 0, config)
+      end
+    end
     return true
   end
 

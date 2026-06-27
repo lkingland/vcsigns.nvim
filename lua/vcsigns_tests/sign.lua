@@ -168,4 +168,78 @@ M.signs = {
   end,
 }
 
+-- Rendering regression: add_signs must place a gutter sign on *every* line of
+-- a multi-line hunk. A single extmark with `end_row` stretches the highlight
+-- range but does not replicate `sign_text` onto each row, so the sign only
+-- showed on the hunk's first line. The `signs` suite above only exercises
+-- compute_signs (the per-line model); this exercises add_signs (the extmark
+-- placement) by inspecting the marks actually placed in a buffer.
+M.multiline_render = {
+  test_cases = {
+    multiline_change = {
+      buf_lines = 6,
+      hunks = { _make_hunk(2, 3, 2, 3) }, -- change lines 2-4
+      expected_sign_lines = { 2, 3, 4 },
+    },
+    multiline_addition = {
+      buf_lines = 6,
+      hunks = { _make_hunk(1, 0, 2, 3) }, -- add lines 2-4
+      expected_sign_lines = { 2, 3, 4 },
+    },
+  },
+  test = function(case)
+    -- add_signs renders from sign.signs config; mirror the defaults minimally.
+    sign.signs = {
+      text = {
+        add = "+",
+        change = "~",
+        delete_below = "_",
+        delete_above = "^",
+        delete_above_below = "x",
+        combined = nil,
+      },
+      hl = {
+        add = "SignAdd",
+        change = "SignChange",
+        delete = "SignDelete",
+        combined = "SignCombined",
+      },
+      priority = 5,
+    }
+
+    local bufnr = vim.api.nvim_create_buf(false, true)
+    local lines = {}
+    for i = 1, case.buf_lines do
+      lines[i] = "line " .. i
+    end
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+
+    sign.add_signs(bufnr, case.hunks)
+
+    local ns = vim.api.nvim_create_namespace "vcsigns"
+    local marks =
+      vim.api.nvim_buf_get_extmarks(bufnr, ns, 0, -1, { details = true })
+    local has_sign = {}
+    for _, mark in ipairs(marks) do
+      local row, details = mark[2], mark[4]
+      if details and details.sign_text then
+        has_sign[row + 1] = true -- record as a 1-indexed line number
+      end
+    end
+
+    for _, line in ipairs(case.expected_sign_lines) do
+      assert(
+        has_sign[line],
+        string.format(
+          "expected a sign on line %d, but none was placed "
+            .. "(multi-line hunk only rendered on its first line)",
+          line
+        )
+      )
+    end
+
+    vim.api.nvim_buf_delete(bufnr, { force = true })
+  end,
+}
+
 return M
